@@ -27,7 +27,7 @@
  *     RF_DR_LOW  = 0
  *     RF_PWR = 11 → 0dBm
  */
-#define NRF_RF_SETUP_VALUE         0x06    // 1Mbps + 0dBm (stable)
+#define NRF_RF_SETUP_VALUE         0x26    // 1Mbps + 0dBm (stable)
 
 /* Address width configuration (SETUP_AW register)
  *   0x01 = 3 bytes
@@ -477,6 +477,7 @@ NRF_Register_t LastReadReg;
 NrfMainStates_t NrfMainStates;
 //variables used in config states
 NrfConfigStates_t NrfConfigStates;
+uint8_t NrfActiveChannel = NRF_CHANNEL;
 //-
 NrfIrqStates_t NrfIrqStates;
 // transmit-
@@ -509,15 +510,20 @@ void NRF_ResetSoft(void){
 	NrfControlFlag.ntfTimeoutTimer=HAL_GetTick();
 	HAL_Delay(50);
 }
-void NRF_Init(SPI_HandleTypeDef * hSpi,NRF_ReceiceCallback_t recCallback){
+void NRF_Init(SPI_HandleTypeDef * hSpi,NRF_ReceiceCallback_t recCallback ,uint8_t channel){
 	NrfSpi =hSpi;
 	NRF_ReceiceCallback =recCallback;
+	if(channel<126){
+		NrfActiveChannel=channel;
+	}
+	NRF_ResetSoft();
+}
+void NRF_SetChannel(uint8_t ch){
+	NrfActiveChannel=ch;
 	NRF_ResetSoft();
 }
 void NRF_TransmitReceive_DMA( uint8_t * pTxData, uint8_t * pRxData, uint16_t Size){
 	SPI_CSN_LOW();
-	__NOP();
-	__NOP();
 	__NOP();
 	    HAL_SPI_TransmitReceive_DMA(NrfSpi, pTxData, pRxData, Size);
 
@@ -949,7 +955,7 @@ void NRF_ConfigProcess(void)
 
     /* -------------------- Payload Size (32 bytes) -------------------- */
     case NRF_Config_SetPayloadSizeReq:
-        data[0] = 32;
+        data[0] = NRF_PAYLOAD_SIZE;
             NRF_WriteRegister(NRF_Reg_RX_PW_P0 + pipe, data, 1);
             NrfConfigStates = NRF_Config_SetPayloadSizeWaitForReply;
         break;
@@ -971,7 +977,7 @@ void NRF_ConfigProcess(void)
 
     /* -------------------- RF Channel -------------------- */
     case NRF_Config_SetRFChannelReq:
-        data[0] = NRF_CHANNEL;
+        data[0] = NrfActiveChannel;
         NRF_WriteRegister(NRF_Reg_RF_CH, data, 1);
         NrfConfigStates = NRF_Config_SetRFChannelWaitForReply;
         break;

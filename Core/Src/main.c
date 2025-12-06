@@ -101,7 +101,7 @@ int main(void)
   MX_DMA_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-  NRF_Init(&hspi1,ReceiveDataFromNRF);
+  NRF_Init(&hspi1,ReceiveDataFromNRF,30);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -123,9 +123,8 @@ int main(void)
 	        }
 	    }
 	    if(dataReceived){
-
 	        	dataReceived=false;
-	        	if(recData[0]==0x11){
+	        	if(recData[0]==0x11 && recData[1]==0x22 &&recData[2]==0x33 && recData[3]==0x44 && recData[4]==0x55){
 	        		recData[0]=1;
 	        	}
 
