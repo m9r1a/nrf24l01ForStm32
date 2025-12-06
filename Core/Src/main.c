@@ -78,6 +78,7 @@ int main(void)
 {
   /* USER CODE BEGIN 1 */
 	uint32_t lastSendTick = 0;
+	uint32_t lastReceivedTick = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -112,7 +113,7 @@ int main(void)
 	  //----------------------------test
 	  //used in master***************************************************
 	  // send
-	    if (HAL_GetTick() - lastSendTick >= 5000)
+	    if (HAL_GetTick() - lastSendTick >= 500)
 	    {
 
 
@@ -125,9 +126,13 @@ int main(void)
 	    if(dataReceived){
 	        	dataReceived=false;
 	        	if(recData[0]==0x11 && recData[1]==0x22 &&recData[2]==0x33 && recData[3]==0x44 && recData[4]==0x55){
-	        		recData[0]=1;
+	        		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 1);
+	        		lastReceivedTick=HAL_GetTick();
 	        	}
 
+	    }
+	    if(HAL_GetTick()-lastReceivedTick>1500){
+	    	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 0);
 	    }
 
 	    //used in mirror***************************************************
@@ -256,14 +261,21 @@ static void MX_GPIO_Init(void)
 /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, LED_Pin|NRF_CSN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(NRF_CE_GPIO_Port, NRF_CE_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(NRF_CSN_GPIO_Port, NRF_CSN_Pin, GPIO_PIN_RESET);
+  /*Configure GPIO pins : LED_Pin NRF_CSN_Pin */
+  GPIO_InitStruct.Pin = LED_Pin|NRF_CSN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : NRF_IRQ_Pin */
   GPIO_InitStruct.Pin = NRF_IRQ_Pin;
@@ -277,13 +289,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(NRF_CE_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : NRF_CSN_Pin */
-  GPIO_InitStruct.Pin = NRF_CSN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(NRF_CSN_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
