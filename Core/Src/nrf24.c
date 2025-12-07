@@ -463,7 +463,8 @@ typedef struct _NrfControlFlag {
 	bool nrfUpdated;
 	uint8_t recievedPayloadLength;
 	bool irqInterruptOccurred;
-	uint32_t ntfTimeoutTimer;
+	uint32_t nrfTimeoutTimer;
+
 } NrfControlFlag_t;
 /*Variables----------------------------------*/
 SPI_HandleTypeDef *NrfSpi;
@@ -507,7 +508,7 @@ void NRF_ResetSoft(void){
 	CmdState = Nrf_CmdStateIdle;
 	NrfConfigStates=NRF_Config_DisableEnhancedShockBurstReq;
 	NrfMainStates =NRF_ConfigState;
-	NrfControlFlag.ntfTimeoutTimer=HAL_GetTick();
+	NrfControlFlag.nrfTimeoutTimer=HAL_GetTick();
 	HAL_Delay(50);
 }
 void NRF_Init(SPI_HandleTypeDef * hSpi,NRF_ReceiceCallback_t recCallback ,uint8_t channel){
@@ -534,7 +535,7 @@ void NRF_Process(){
 	NRF_CommandSubTask();
 	switch(NrfMainStates){
 	case NRF_ConfigState:
-		NrfControlFlag.ntfTimeoutTimer=HAL_GetTick();
+		NrfControlFlag.nrfTimeoutTimer=HAL_GetTick();
 		NRF_ConfigProcess(); // at the end of this process go to receive state
 		break;
 	case NRF_TransmittingState:
@@ -547,7 +548,7 @@ void NRF_Process(){
 		 NRF_IrqProcess();
 		break;
 	case NRF_IdleState:
-		NrfControlFlag.ntfTimeoutTimer=HAL_GetTick();
+		NrfControlFlag.nrfTimeoutTimer=HAL_GetTick();
 	    if(NrfControlFlag.irqInterruptOccurred && CmdState == Nrf_CmdStateIdle){
 	        NrfMainStates = NRF_IrqState;
 	        NrfIrqStates = NRF_Irq_ReadStatus;
@@ -555,7 +556,7 @@ void NRF_Process(){
 	    }
 	    break;
 	}
-	if((HAL_GetTick()- NrfControlFlag.ntfTimeoutTimer)>5000){
+	if((HAL_GetTick()- NrfControlFlag.nrfTimeoutTimer)>5000){
 		NRF_ResetSoft();
 	}
 
@@ -1120,7 +1121,8 @@ void NRF_ConfigProcess(void)
     case NRF_Config_ClearInterrupt:
         data[0]=0;
         data[0]=(RegisterValues.STATUS.bits.RX_DR << 6) |
-                (RegisterValues.STATUS.bits.TX_DS << 5);
+                (RegisterValues.STATUS.bits.TX_DS << 5) |
+				(RegisterValues.STATUS.bits.MAX_RT<< 4);
         NRF_WriteRegister(NRF_Reg_STATUS, &data[0], 1);
         NrfConfigStates = NRF_Config_ClearInterruptWaitForReply;
     	break;
