@@ -355,6 +355,7 @@ typedef enum{
 	NRF_TransmittingState,
 	NRF_RecievingState,
 	NRF_IrqState,
+	NRF_ExistenceState,
 	NRF_IdleState
 }NrfMainStates_t;
 typedef enum
@@ -455,7 +456,14 @@ typedef enum {
 
 }NrfReceiveStates_t;
 
+typedef enum {
+	NRF_Existence_ReadRFChannelReq,
+	NRF_Existence_ReadRFChannelWaitForReply,
+	NRF_Existence_PowerDown,
+	NRF_Existence_PowerDownWaitForReply,
+	NRF_Existence_WaistTimeBeforeReset,
 
+}NrfExistenceStates_t;
 
 
 typedef struct _NrfControlFlag {
@@ -464,7 +472,8 @@ typedef struct _NrfControlFlag {
 	uint8_t recievedPayloadLength;
 	bool irqInterruptOccurred;
 	uint32_t nrfTimeoutTimer;
-
+	uint32_t nrfExistenceTimer;
+	bool nrfForceResetFlag;
 } NrfControlFlag_t;
 /*Variables----------------------------------*/
 SPI_HandleTypeDef *NrfSpi;
@@ -488,6 +497,9 @@ uint8_t NrfTransmitterAddr[5];
 //receive-
 NrfReceiveStates_t NrfReceiveStates;
 NRF_ReceiceCallback_t NRF_ReceiceCallback;
+//existence
+NrfExistenceStates_t NrfExistenceStates;
+
 /*prototypes -------------------------------*/
 void NRF_CommandSubTask(void);
 void NRF_NoOperation(void);
@@ -498,6 +510,7 @@ void NRF_ConfigProcess(void);
 void NRF_IrqProcess(void);
 void NRF_TransmitterProcess();
 void NRF_ReceiverProcess();
+void NRF_ExistenceProcess();
 /*functions---------------------------------*/
 void NRF_ResetSoft(void){
 	NrfControlFlag.nrfUpdated = false;
@@ -509,7 +522,8 @@ void NRF_ResetSoft(void){
 	NrfConfigStates=NRF_Config_DisableEnhancedShockBurstReq;
 	NrfMainStates =NRF_ConfigState;
 	NrfControlFlag.nrfTimeoutTimer=HAL_GetTick();
-	HAL_Delay(50);
+	NrfControlFlag.nrfExistenceTimer=HAL_GetTick();
+	HAL_Delay(5);
 }
 void NRF_Init(SPI_HandleTypeDef * hSpi,NRF_ReceiceCallback_t recCallback ,uint8_t channel){
 	NrfSpi =hSpi;
@@ -547,12 +561,25 @@ void NRF_Process(){
 	case NRF_IrqState:
 		 NRF_IrqProcess();
 		break;
+	case NRF_ExistenceState:
+		NRF_ExistenceProcess();
+		break;
 	case NRF_IdleState:
+		HAL_GPIO_WritePin(TEST_LED_GPIO_Port, TEST_LED_Pin,0);
 		NrfControlFlag.nrfTimeoutTimer=HAL_GetTick();
 	    if(NrfControlFlag.irqInterruptOccurred && CmdState == Nrf_CmdStateIdle){
 	        NrfMainStates = NRF_IrqState;
 	        NrfIrqStates = NRF_Irq_ReadStatus;
 	        NrfControlFlag.irqInterruptOccurred = false;
+	        break;
+	    }
+	    if(CmdState == Nrf_CmdStateIdle &&
+	       !NrfControlFlag.dataRecievedFromSpi &&
+	       (HAL_GetTick() - NrfControlFlag.nrfExistenceTimer) > 5500)
+	    {
+	        NrfControlFlag.nrfExistenceTimer = HAL_GetTick();
+	        NrfMainStates = NRF_ExistenceState;
+	        NrfExistenceStates = NRF_Existence_ReadRFChannelReq;
 	    }
 	    break;
 	}
@@ -561,6 +588,7 @@ void NRF_Process(){
 	}
 
 }
+
 void NRF_FinishSpiTransaction(){
 	SPI_CSN_HIGH();
 
@@ -1283,11 +1311,11 @@ bool NRF_CheckTransmittingAvailability(void){
 	}
 	return false;
 }
-uint8_t ttransmitterHolder[32];
+uint8_t transmitterHolder[32];
 void NRF_TransmitPacket(uint8_t *packet , uint8_t length,uint8_t pipe){
 	NRF_CE_LOW();
-	memset(ttransmitterHolder,0,sizeof(spiTxBuf));
-	memcpy(ttransmitterHolder,packet,length);
+	memset(transmitterHolder,0,sizeof(spiTxBuf));
+	memcpy(transmitterHolder,packet,length);
 	NrfTransmitterPipe=pipe;
 	NRF_SelectTxPipeAddress();
 	NrfTransmitterStates=NRF_Transmitter_SetConfigToTx;
@@ -1337,7 +1365,7 @@ void NRF_TransmitterProcess()
      * 3) Load TX Payload (W_TX_PAYLOAD command)
      * --------------------------------------------- */
     case NRF_Transmitter_LoadTxPayload:
-    	NRF_WriteTxPayload(ttransmitterHolder,NRF_PAYLOAD_SIZE);  // length fixed = 32
+    	NRF_WriteTxPayload(transmitterHolder,NRF_PAYLOAD_SIZE);  // length fixed = 32
         NrfTransmitterStates = NRF_Transmitter_LoadTxPayloadWaitForReply;
         break;
 
@@ -1387,4 +1415,55 @@ void NRF_ReceiverProcess(){
 		break;
 	}
 }
+/*existence process ----------------------------------------*/
+void NRF_ExistenceProcess(){
+	static uint32_t timer;
+    switch(NrfExistenceStates){
 
+    case NRF_Existence_ReadRFChannelReq:
+
+        NRF_ReadRegister(NRF_Reg_RF_CH, 1);
+        NrfExistenceStates = NRF_Existence_ReadRFChannelWaitForReply;
+        break;
+
+    case NRF_Existence_ReadRFChannelWaitForReply:
+        if(NrfControlFlag.nrfUpdated){
+            NrfControlFlag.nrfUpdated = false;
+
+            if(RegisterValues.RF_CH.value == NrfActiveChannel &&
+            		RegisterValues.STATUS.bits.MAX_RT==0 &&
+					RegisterValues.STATUS.bits.TX_FULL==0 &&
+					!NrfControlFlag.nrfForceResetFlag
+
+            ){
+                NrfMainStates = NRF_IdleState;
+            } else {
+            	NrfExistenceStates = NRF_Existence_PowerDown;
+            	NrfControlFlag.nrfForceResetFlag=false;
+
+            }
+        }
+        break;
+    case NRF_Existence_PowerDown:
+    	RegisterValues.CONFIG.bits.PWR_UP=0;
+    	NRF_WriteRegister(NRF_Reg_CONFIG, &RegisterValues.CONFIG.value, 1);
+    	NrfExistenceStates = NRF_Existence_PowerDownWaitForReply;
+    	break;
+    case NRF_Existence_PowerDownWaitForReply:
+    	if(NrfControlFlag.nrfUpdated){
+    		NrfControlFlag.nrfUpdated=false;
+    		timer=HAL_GetTick();
+    		NrfExistenceStates = NRF_Existence_WaistTimeBeforeReset;
+    	}
+    	break;
+    case NRF_Existence_WaistTimeBeforeReset:
+    	if(HAL_GetTick()-timer>1000){
+    		NRF_ResetSoft();
+    	}
+    	break;
+    }
+}
+
+ void NRF_ResetModule(){
+	 NrfControlFlag.nrfForceResetFlag=true;
+ }

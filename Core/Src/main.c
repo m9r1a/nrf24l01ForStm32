@@ -79,6 +79,7 @@ int main(void)
   /* USER CODE BEGIN 1 */
 	uint32_t lastSendTick = 0;
 	uint32_t lastReceivedTick = 0;
+	uint32_t nrfResetTimer=HAL_GetTick();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -121,18 +122,22 @@ int main(void)
 	        {
 	            NRF_TransmitPacket(testPacket, sizeof(testPacket),0);
 	            lastSendTick = HAL_GetTick();
+	            nrfResetTimer=HAL_GetTick();
 	        }
 	    }
 	    if(dataReceived){
 	        	dataReceived=false;
+	        	nrfResetTimer=HAL_GetTick();
 	        	if(recData[0]==0x11 && recData[1]==0x22 &&recData[2]==0x33 && recData[3]==0x44 && recData[4]==0x55){
 	        		HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 1);
 	        		lastReceivedTick=HAL_GetTick();
 	        	}
 
 	    }
+
 	    if(HAL_GetTick()-lastReceivedTick>1500){
 	    	HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, 0);
+
 	    }
 
 	    //used in mirror***************************************************
@@ -141,11 +146,22 @@ int main(void)
 //	        if (NRF_CheckTransmittingAvailability())
 //	        {
 //	        	dataReceived=false;
+//	        	nrfResetTimer=HAL_GetTick();
 //	            NRF_TransmitPacket(recData,5,0);
 //
 //	        }
 //	    	//do something with recData
 //	    }
+//
+//	    // used in both ***************************************************
+//
+//	    	if(HAL_GetTick()-nrfResetTimer>6000){
+//
+//	    		NRF_ResetModule();
+//	    	}
+//
+
+
 	    //----------------------------test end
 
     /* USER CODE END WHILE */
@@ -268,7 +284,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, LED_Pin|NRF_CSN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(NRF_CE_GPIO_Port, NRF_CE_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, TEST_LED_Pin|NRF_CE_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : LED_Pin NRF_CSN_Pin */
   GPIO_InitStruct.Pin = LED_Pin|NRF_CSN_Pin;
@@ -277,18 +293,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : TEST_LED_Pin NRF_CE_Pin */
+  GPIO_InitStruct.Pin = TEST_LED_Pin|NRF_CE_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /*Configure GPIO pin : NRF_IRQ_Pin */
   GPIO_InitStruct.Pin = NRF_IRQ_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(NRF_IRQ_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : NRF_CE_Pin */
-  GPIO_InitStruct.Pin = NRF_CE_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(NRF_CE_GPIO_Port, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI4_15_IRQn, 0, 0);
