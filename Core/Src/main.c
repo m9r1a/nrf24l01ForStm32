@@ -80,6 +80,8 @@ int main(void)
 	uint32_t lastSendTick = 0;
 	uint32_t lastReceivedTick = 0;
 	uint32_t nrfResetTimer=HAL_GetTick();
+	uint16_t resetCount=0;
+	bool send1stTime=true;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -122,7 +124,6 @@ int main(void)
 	        {
 	            NRF_TransmitPacket(testPacket, sizeof(testPacket),0);
 	            lastSendTick = HAL_GetTick();
-	            nrfResetTimer=HAL_GetTick();
 	        }
 	    }
 	    if(dataReceived){
@@ -141,6 +142,7 @@ int main(void)
 	    }
 
 	    //used in mirror***************************************************
+
 //	    if(dataReceived){
 //
 //	        if (NRF_CheckTransmittingAvailability())
@@ -152,14 +154,21 @@ int main(void)
 //	        }
 //	    	//do something with recData
 //	    }
-//
-//	    // used in both ***************************************************
-//
-//	    	if(HAL_GetTick()-nrfResetTimer>6000){
-//
-//	    		NRF_ResetModule();
-//	    	}
-//
+
+    // used in both ***************************************************
+
+	    	if(HAL_GetTick()-nrfResetTimer>6000){
+	    		nrfResetTimer=HAL_GetTick();
+	    		resetCount+=1;
+	    		for(uint16_t i=0;i<resetCount;i++){
+	    			HAL_GPIO_WritePin(TEST_LED_GPIO_Port, TEST_LED_Pin, 1);
+	    			HAL_Delay(300);
+	    			HAL_GPIO_WritePin(TEST_LED_GPIO_Port, TEST_LED_Pin, 0);
+	    			HAL_Delay(300);
+	    		}
+	    		NRF_ResetModule();
+	    	}
+
 
 
 	    //----------------------------test end

@@ -360,6 +360,8 @@ typedef enum{
 }NrfMainStates_t;
 typedef enum
 {
+	NRF_Config_WaitStartup,
+	NRF_Config_Waiting,
     /* Disable Enhanced ShockBurst (auto-ack) */
     NRF_Config_DisableEnhancedShockBurstReq,
     NRF_Config_DisableEnhancedShockBurstWaitForReply,
@@ -391,6 +393,8 @@ typedef enum
 	/*set config register*/
     NRF_Config_SetConfigRegReq,
     NRF_Config_SetConfigRegWaitForReply,
+
+	NRF_Config_WaitAfterOn,
 
     /* Set Pipe0 RX Address */
     NRF_Config_SetRxPipe0AddressReq,
@@ -519,11 +523,11 @@ void NRF_ResetSoft(void){
 	SPI_CSN_HIGH();
 	NRF_CE_LOW();
 	CmdState = Nrf_CmdStateIdle;
-	NrfConfigStates=NRF_Config_DisableEnhancedShockBurstReq;
+	NrfConfigStates=NRF_Config_WaitStartup;
 	NrfMainStates =NRF_ConfigState;
 	NrfControlFlag.nrfTimeoutTimer=HAL_GetTick();
 	NrfControlFlag.nrfExistenceTimer=HAL_GetTick();
-	HAL_Delay(5);
+	//HAL_Delay(5);
 }
 void NRF_Init(SPI_HandleTypeDef * hSpi,NRF_ReceiceCallback_t recCallback ,uint8_t channel){
 	NrfSpi =hSpi;
@@ -549,6 +553,7 @@ void NRF_Process(){
 	NRF_CommandSubTask();
 	switch(NrfMainStates){
 	case NRF_ConfigState:
+		HAL_GPIO_WritePin(TEST_LED_GPIO_Port, TEST_LED_Pin, 1);
 		NrfControlFlag.nrfTimeoutTimer=HAL_GetTick();
 		NRF_ConfigProcess(); // at the end of this process go to receive state
 		break;
@@ -584,7 +589,7 @@ void NRF_Process(){
 	    break;
 	}
 	if((HAL_GetTick()- NrfControlFlag.nrfTimeoutTimer)>5000){
-		NRF_ResetSoft();
+		NRF_ResetSoft(); // if not in idle mode for long time
 	}
 
 }
@@ -935,8 +940,18 @@ void NRF_ConfigProcess(void)
 {
     static uint8_t data[5];
     static uint8_t pipe=0;
+    static uint32_t waitTimer;
     switch(NrfConfigStates)
     {
+    case NRF_Config_WaitStartup:
+    	waitTimer=HAL_GetTick();
+    	NrfConfigStates=NRF_Config_Waiting;
+    	break;
+    case NRF_Config_Waiting:
+    	if((HAL_GetTick()- waitTimer )>100){
+    		NrfConfigStates=NRF_Config_DisableEnhancedShockBurstReq;
+    	}
+    	break;
     /* -------------------- Disable EN_AA -------------------- */
     case NRF_Config_DisableEnhancedShockBurstReq:
         data[0] = 0x00;
@@ -1059,8 +1074,15 @@ void NRF_ConfigProcess(void)
         if (NrfControlFlag.nrfUpdated)
         {
             NrfControlFlag.nrfUpdated = false;
-            NrfConfigStates = NRF_Config_SetRxPipe0AddressReq;
+            waitTimer=HAL_GetTick();
+            NrfConfigStates = NRF_Config_WaitAfterOn;
         }
+    	break;
+
+    case NRF_Config_WaitAfterOn:
+    	if((HAL_GetTick()- waitTimer )>100){
+    		NrfConfigStates=NRF_Config_SetRxPipe0AddressReq;
+    	}
     	break;
     /* -------------------- Pipe0 Address -------------------- */
     case NRF_Config_SetRxPipe0AddressReq:
@@ -1194,7 +1216,7 @@ void NRF_ConfigProcess(void)
             	NrfConfigStates = NRF_Config_Done;
             	NRF_CE_HIGH(); // enter receive mode
             } else{
-            	NrfConfigStates =NRF_Config_DisableEnhancedShockBurstReq; // module not exist, repeat again.
+            	NrfConfigStates =NRF_Config_WaitStartup; // module not exist, repeat again.
 
             }
 
@@ -1457,7 +1479,7 @@ void NRF_ExistenceProcess(){
     	}
     	break;
     case NRF_Existence_WaistTimeBeforeReset:
-    	if(HAL_GetTick()-timer>1000){
+    	if(HAL_GetTick()-timer>200){
     		NRF_ResetSoft();
     	}
     	break;
